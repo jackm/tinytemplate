@@ -82,30 +82,27 @@ char uartRecv() {
   // Read the byte
   cli();
   asm volatile(
-    "  ldi r18, %[rxdelay2]              \n\t" // 1.5 bit delay
-    "  ldi %0, 0x80                      \n\t" // bit shift counter
-    "WaitStart:                          \n\t"
-    "  sbic %[uart_port]-2, %[uart_pin]  \n\t" // wait for start edge
-    "  rjmp WaitStart                    \n\t"
+    "  ldi r16, %[rxdelay2]              \n\t" // 1.5 bit delay
+    "  ldi %0, 0x80                      \n\t" // Bit shift counter
     "RxBit:                              \n\t"
-    // 6 cycle loop + delay - total = 5 + 3*r22
-    // delay (3 cycle * r18) -1 and clear carry with subi
-    "  subi r18, 1                       \n\t"
+    // 6 cycle loop + delay - total = 5 + 3*r16
+    // delay (3 cycle * r16) - 1 and clear carry with subi
+    "  subi r16, 1                       \n\t" // Need to use subi and not dec in order to affect carry bit
     "  brne RxBit                        \n\t"
-    "  ldi r18, %[rxdelay]               \n\t"
-    "  sbic %[uart_port]-2, %[uart_pin]  \n\t" // check UART PIN
+    "  ldi r16, %[rxdelay]               \n\t" // 1 bit delay
+    "  sbic %[uart_port]-2, %[uart_pin]  \n\t" // Sample UART pin, set carry bit if high
     "  sec                               \n\t"
-    "  ror %0                            \n\t"
+    "  ror %0                            \n\t" // Rotate, end loop when bit0 is set and shifts into carry bit
     "  brcc RxBit                        \n\t"
     "StopBit:                            \n\t"
-    "  dec r18                           \n\t"
+    "  dec r16                           \n\t"
     "  brne StopBit                      \n\t"
-    : "=r" (ch)
+    : "=d" (ch)
     : [uart_port] "I" (_SFR_IO_ADDR(PORTB)),
       [uart_pin] "I" (UART_RX),
-      [rxdelay] "I" (RXDELAY),
-      [rxdelay2] "I" (RXDELAY2)
-    : "r0","r18","r19");
+      [rxdelay] "M" (RXDELAY),
+      [rxdelay2] "M" (RXDELAY2)
+    : "r16");
   sei();
 #endif
   return ch;
@@ -120,27 +117,27 @@ ISR(PCINT0_vect) {
   if(!(PINB&(1<<UART_RX))) {
     // Start the read (assuming we have the start bit)
     asm volatile(
-      "  ldi r18, %[rxdelay2]              \n\t" // 1.5 bit delay
-      "  ldi %0, 0x80                      \n\t" // bit shift counter
+      "  ldi r16, %[rxdelay2]              \n\t" // 1.5 bit delay
+      "  ldi %0, 0x80                      \n\t" // Bit shift counter
       "RxBit:                              \n\t"
-      // 6 cycle loop + delay - total = 5 + 3*r22
-      // delay (3 cycle * r18) -1 and clear carry with subi
-      "  subi r18, 1                       \n\t"
+      // 6 cycle loop + delay - total = 5 + 3*r16
+      // delay (3 cycle * r16) - 1 and clear carry with subi
+      "  subi r16, 1                       \n\t" // Need to use subi and not dec in order to affect carry bit
       "  brne RxBit                        \n\t"
-      "  ldi r18, %[rxdelay]               \n\t"
-      "  sbic %[uart_port]-2, %[uart_pin]  \n\t" // check UART PIN
+      "  ldi r16, %[rxdelay]               \n\t" // 1 bit delay
+      "  sbic %[uart_port]-2, %[uart_pin]  \n\t" // Sample UART pin, set carry bit if high
       "  sec                               \n\t"
-      "  ror %0                            \n\t"
+      "  ror %0                            \n\t" // Rotate, end loop when bit0 is set and shifts into carry bit
       "  brcc RxBit                        \n\t"
       "StopBit:                            \n\t"
-      "  dec r18                           \n\t"
+      "  dec r16                           \n\t"
       "  brne StopBit                      \n\t"
-      : "=r" (ch)
+      : "=d" (ch)
       : [uart_port] "I" (_SFR_IO_ADDR(PORTB)),
         [uart_pin] "I" (UART_RX),
-        [rxdelay] "I" (RXDELAY),
-        [rxdelay2] "I" (RXDELAY2)
-      : "r0","r18","r19");
+        [rxdelay] "M" (RXDELAY),
+        [rxdelay2] "M" (RXDELAY2)
+      : "r16");
     // Now put it in the buffer (if we have room)
     if(g_index<UART_BUFFER)
       g_buffer[g_index++] = ch;

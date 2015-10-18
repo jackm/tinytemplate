@@ -57,29 +57,29 @@ void uartSend(char ch) {
 #endif
   cli();
   asm volatile(
-    "  cbi %[uart_port], %[uart_pin]    \n\t"  // start bit
-    "  in r0, %[uart_port]              \n\t"
-    "  ldi r30, 3                       \n\t"  // stop bit + idle state
-    "  ldi r28, %[txdelay]              \n\t"
-    "TxLoop:                            \n\t"
-    // 8 cycle loop + delay - total = 7 + 3*r22
-    "  mov r29, r28                     \n\t"
-    "TxDelay:                           \n\t"
+    "  cbi %[uart_port], %[uart_pin]    \n\t"  // Start bit
+    "  in __tmp_reg__, %[uart_port]     \n\t"  // Load output port into r0
+    "  ldi r16, 3                       \n\t"  // Stop bit + idle state
+    "  ldi r17, %[txdelay]              \n\t"
+    "TxLoop%=:                          \n\t"
+    // 8 cycle loop + delay - total = 7 + 3*txdelay
+    "  mov r18, r17                     \n\t"  // Copy txdelay into working reg r18, r17 untouched
+    "TxDelay%=:                         \n\t"
     // delay (3 cycle * delayCount) - 1
-    "  dec r29                          \n\t"
-    "  brne TxDelay                     \n\t"
-    "  bst %[ch], 0                     \n\t"
-    "  bld r0, %[uart_pin]              \n\t"
-    "  lsr r30                          \n\t"
-    "  ror %[ch]                        \n\t"
-    "  out %[uart_port], r0             \n\t"
-    "  brne TxLoop                      \n\t"
+    "  dec r18                          \n\t"
+    "  brne TxDelay%=                   \n\t"
+    "  bst %[ch], 0                     \n\t"  // Store input byte bit0 to T bit
+    "  bld __tmp_reg__, %[uart_pin]     \n\t"  // Load T bit to bit # of tx pin of r0
+    "  lsr r16                          \n\t"
+    "  ror %[ch]                        \n\t"  // Shift over input byte
+    "  out %[uart_port], __tmp_reg__    \n\t"  // Load r0 to output port
+    "  brne TxLoop%=                    \n\t"
     :
     : [uart_port] "I" (_SFR_IO_ADDR(PORTB)),
       [uart_pin] "I" (UART_TX),
-      [txdelay] "I" (TXDELAY),
+      [txdelay] "M" (TXDELAY),
       [ch] "r" (ch)
-    : "r0","r28","r29","r30");
+    : "r16","r17","r18");
   sei();
 #ifdef UART_ONEPIN
   // Change back to idle state
